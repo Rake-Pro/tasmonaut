@@ -72,8 +72,8 @@ jobs:
     needs: [version]
     # Runs for a freshly minted tag (main merge) or a manually pushed v* tag.
     if: always() && (needs.version.outputs.tag != '' || github.ref_type == 'tag')
-    # On-prem ARC runner (GitOps cluster-core/github-runners); ephemeral, no layer cache.
-    runs-on: arc-linux
+    # Public repo: GitHub-hosted runners (the on-prem ARC pool is for private repos only).
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
     steps:
@@ -128,8 +128,8 @@ jobs:
     name: Trivy scan
     needs: [build]
     if: always() && needs.build.result == 'success'
-    # On-prem ARC runner (GitOps cluster-core/github-runners); ephemeral, no layer cache.
-    runs-on: arc-linux
+    # Public repo: GitHub-hosted runners (the on-prem ARC pool is for private repos only).
+    runs-on: ubuntu-latest
     steps:
       - name: Log in to GHCR
         uses: docker/login-action@v4
