@@ -1,0 +1,6 @@
+.git
+.github
+bin
+docs
+*.md
+config.yaml

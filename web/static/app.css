@@ -1,0 +1,64 @@
+/* tasmonaut: page-local rules on top of drift.css. Everything visible that is
+   a component comes from drift.css; this file only lays those components out
+   for the pages Tasmonaut has. */
+
+/* Two sections do not need the full 250 px rail; keep it, narrower. */
+:root { --sidebar-w: 168px; }
+.nav a.nav-item { text-decoration:none; display:block; }
+
+/* sign-in: the masthead strip stays, the content is one centred card */
+.signin { max-width:440px; margin:40px auto; }
+.signin .page-sub { margin-bottom:20px; }
+
+/* account menu */
+.menu { position:fixed; top:calc(var(--masthead-h) + 6px); right:12px; z-index:60; min-width:220px; background:var(--panel); box-shadow:var(--shadow-md); }
+.menu-head { padding:12px 14px; border-bottom:1px solid var(--border); }
+.menu-name { font-weight:700; font-size:14px; }
+.menu-sub { font-size:12.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; }
+.menu-item { display:block; width:100%; text-align:left; background:none; border:0; padding:10px 14px; font:inherit; font-size:14px; color:var(--text); cursor:pointer; }
+.menu-item:hover { background:var(--surface-2); }
+
+/* device table */
+.devices-table .cell-main a { font-weight:600; }
+.devices-table td { vertical-align:middle; }
+.relay-switches { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.relay-switch { display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--muted); }
+.relay-switch .switch { cursor:pointer; }
+.relay-switch .switch.busy { opacity:.5; cursor:progress; }
+.energy-note { font-family:var(--mono); font-size:12.5px; color:var(--muted); }
+
+/* device page */
+.relay-list { display:flex; flex-direction:column; gap:10px; }
+.relay-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 12px; background:var(--raised); }
+.relay-row .relay-name { font-size:14px; }
+.relay-row .relay-idx { font-family:var(--mono); font-size:12.5px; color:var(--muted); margin-left:8px; }
+.relay-row .relay-state { display:inline-flex; align-items:center; gap:10px; }
+.console-form { display:flex; gap:10px; align-items:stretch; }
+.console-form input { flex:1 1 auto; }
+.console-out { margin:12px 0 0; padding:12px; background:var(--code-bg, var(--raised)); color:var(--text); font-size:12.5px; line-height:1.5; max-height:320px; overflow:auto; white-space:pre-wrap; word-break:break-word; min-height:48px; }
+.console-out .c-cmd { color:var(--brand-text); }
+.console-out .c-err { color:var(--err-text); }
+.console-out .c-time { color:var(--faint); }
+.raw-json { margin:0; font-size:12px; max-height:420px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
+#offlineBanner { margin-bottom:16px; }
+
+/* chips used as table filters are buttons */
+.chip-row .chip.zone { cursor:pointer; border:0; font:inherit; }
+
+/* dialog form bits */
+.modal-body .field-group { margin-top:10px; }
+.modal-body input[type="file"] { font-size:13.5px; }
+.modal-body .target-list { margin:8px 0 0; padding:6px 10px 6px 26px; max-height:160px; overflow:auto; background:var(--raised); font-size:13.5px; }
+
+/* job tables */
+.job-progress { font-family:var(--mono); font-size:13px; }
+td.result { max-width:520px; font-family:var(--mono); font-size:12.5px; color:var(--muted); overflow-wrap:anywhere; }
+
+/* reduce table noise on phones */
+@media (max-width:720px) {
+  .devices-table .hide-sm, .hide-sm { display:none; }
+  .console-form { flex-direction:column; }
+}
+@media (max-width:1000px) {
+  .hide-md { display:none; }
+}

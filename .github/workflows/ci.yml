@@ -1,0 +1,49 @@
+name: CI
+
+# No paths filters: the "build" check is required on dev -> main promotion PRs,
+# so it must exist on every dev SHA.
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l $(git ls-files '*.go' | grep -v '^vendor/'))
+          if [ -n "$unformatted" ]; then echo "gofmt needed on:"; echo "$unformatted"; exit 1; fi
+      - name: vendor is in sync
+        run: go mod vendor && git diff --exit-code --stat -- vendor go.mod go.sum
+      - name: build
+        run: go build -mod=vendor ./...
+      - name: vet
+        run: go vet -mod=vendor ./...
+      - name: test
+        run: go test -mod=vendor ./... -count=1
+      - name: smoke
+        run: |
+          set -euo pipefail
+          go build -mod=vendor -o /tmp/tasmonaut ./cmd/tasmonaut
+          TASMONAUT_FIRMWARE_CHECK_LATEST=false TASMONAUT_LISTEN=127.0.0.1:8099 /tmp/tasmonaut &
+          pid=$!
+          for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8099/healthz && break; sleep 0.5; done
+          curl -fsS http://127.0.0.1:8099/ | grep -q '<title>Devices - Tasmonaut'
+          curl -fsS http://127.0.0.1:8099/api/devices | grep -q '"devices"'
+          kill $pid

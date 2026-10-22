@@ -1,0 +1,17 @@
+{{define "content"}}
+{{$j := .Job}}
+<div class="page-head">
+  <div class="page-crumb"><a href="/jobs">Jobs</a><span>{{$j.ID}}</span></div>
+  <div class="head-row">
+    <div><h1 class="page-title" id="jobTitle">{{$j.Summary}}</h1><p class="page-sub">Started {{$j.StartedAt.Local.Format "2006-01-02 15:04:05"}}. <span id="jobState"></span></p><div class="head-labels" id="headLabels"></div></div>
+    <div class="head-actions"><a class="btn ghost sm" href="/jobs">All jobs</a></div>
+  </div>
+</div>
+<div class="content">
+  <div class="table-wrap"><table>
+    <thead><tr><th>Device</th><th>State</th><th>Result</th><th class="hide-sm">Updated</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+</div>
+<script type="application/json" id="page-data">{{json (dict "job" $j)}}</script>
+{{end}}

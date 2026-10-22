@@ -1,0 +1,44 @@
+{{define "content"}}
+<div class="page-head">
+  <div class="head-row">
+    <div>
+      <h1 class="page-title">Devices</h1>
+      <p class="page-sub">Tasmota devices on your network: the configured list plus everything discovery finds. Nothing is stored; a restart starts from the configuration again.</p>
+      <div class="head-labels" id="headLabels"></div>
+    </div>
+    <div class="head-actions">
+      <button class="btn ghost sm" type="button" data-action="refresh-all">Refresh</button>
+      <button class="btn ghost sm" type="button" data-action="scan">Scan network</button>
+      <button class="btn primary sm" type="button" data-action="add-device">Add device</button>
+    </div>
+  </div>
+</div>
+<div class="content">
+  <div class="view-head">
+    <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input class="field" id="filter" type="search" placeholder="Filter by name, host, hardware or version" aria-label="Filter devices"></div>
+    <div class="chip-row" id="stateFilter"><button class="chip zone all on" type="button" data-state="all">All</button><button class="chip zone" type="button" data-state="online">Live</button><button class="chip zone" type="button" data-state="offline">Offline</button><button class="chip zone" type="button" data-state="update">Update available</button></div>
+  </div>
+  <div class="bulk-bar" id="bulkBar" hidden>
+    <span class="bulk-count" id="bulkCount">0 selected</span>
+    <button class="btn ghost sm" type="button" data-bulk="power-on">Power on</button>
+    <button class="btn ghost sm" type="button" data-bulk="power-off">Power off</button>
+    <button class="btn ghost sm" type="button" data-bulk="command">Send command</button>
+    <button class="btn ghost sm" type="button" data-bulk="backup">Download configs</button>
+    <button class="btn ghost sm" type="button" data-bulk="upgrade">Upgrade firmware</button>
+    <button class="btn plain sm" type="button" data-bulk="clear">Clear</button>
+  </div>
+  <div class="table-wrap devices-table"><table>
+    <thead><tr>
+      <th class="sel-cell"><input type="checkbox" id="selAll" aria-label="Select all shown"></th>
+      <th>Device</th><th class="hide-sm">Hardware</th><th>Firmware</th><th>Power</th><th class="hide-sm">Signal</th><th class="hide-md">Uptime</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+  <div class="empty-state" id="empty" hidden>
+    <div class="es-title">No devices yet</div>
+    <div class="es-sub">Add one by address, or run a network scan over the configured ranges. Devices listed in the configuration appear here as soon as they answer.</div>
+    <button class="btn primary" type="button" data-action="add-device">Add device</button>
+  </div>
+</div>
+<script type="application/json" id="page-data">{{json (dict "devices" .Devices "firmware" .Firmware)}}</script>
+{{end}}

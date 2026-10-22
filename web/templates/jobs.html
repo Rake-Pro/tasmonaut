@@ -1,0 +1,19 @@
+{{define "content"}}
+<div class="page-head">
+  <div class="head-row">
+    <div><h1 class="page-title">Jobs</h1><p class="page-sub">Bulk operations and their per-device results. Jobs live in memory; the newest fifty are kept until the process restarts.</p></div>
+  </div>
+</div>
+<div class="content">
+  <div class="table-wrap" id="jobsWrap"><table>
+    <thead><tr><th>Started</th><th>Job</th><th>Progress</th><th>Status</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table></div>
+  <div class="empty-state" id="empty" hidden>
+    <div class="es-title">No jobs yet</div>
+    <div class="es-sub">Select devices on the Devices page and use the bulk bar: power, command, config download or firmware upgrade.</div>
+    <a class="btn primary" href="/">Go to devices</a>
+  </div>
+</div>
+<script type="application/json" id="page-data">{{json (dict "jobs" .Jobs)}}</script>
+{{end}}

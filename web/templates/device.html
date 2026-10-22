@@ -1,0 +1,48 @@
+{{define "content"}}
+{{$d := .Device}}
+<div class="page-head">
+  <div class="page-crumb"><a href="/">Devices</a><span id="crumbName">{{$d.Name}}</span></div>
+  <div class="head-row">
+    <div>
+      <h1 class="page-title" id="devName">{{$d.Name}}</h1>
+      <p class="page-sub">Tasmota device at <span class="mono" id="devHost">{{$d.Host}}</span>. Changes apply on the device immediately.</p>
+      <div class="head-labels" id="headLabels"></div>
+    </div>
+    <div class="head-actions">
+      <a class="btn ghost sm" id="openUi" href="http://{{$d.Host}}/" target="_blank" rel="noopener">Open device UI</a>
+      <button class="btn ghost sm" type="button" data-action="refresh">Refresh</button>
+      <a class="btn ghost sm" href="/api/devices/{{$d.ID}}/backup">Download config</a>
+      <button class="btn ghost sm" type="button" data-action="restore">Restore config</button>
+      <button class="btn ghost sm" type="button" data-action="restart">Restart</button>
+      <button class="btn ghost sm" type="button" id="upgradeBtn" data-action="upgrade">Upgrade firmware</button>
+      <button class="btn danger-soft sm" type="button" data-action="remove">Remove</button>
+    </div>
+  </div>
+</div>
+<div class="content">
+  <div class="ro-banner err" id="offlineBanner" hidden></div>
+  <div class="grid-2">
+    <div class="stack">
+      <div class="card"><p class="section-label">Power</p><div id="relays" class="relay-list"></div></div>
+      <div class="card"><p class="section-label">Identity</p><div class="kv" id="kvIdentity"></div></div>
+      <div class="card"><p class="section-label">Network</p><div class="kv" id="kvNetwork"></div></div>
+      <div class="card" id="energyCard" hidden><p class="section-label">Energy</p><div class="kv" id="kvEnergy"></div></div>
+    </div>
+    <div class="stack">
+      <div class="card"><p class="section-label">Firmware</p><div class="kv" id="kvFirmware"></div></div>
+      <div class="card"><p class="section-label">MQTT</p><div class="kv" id="kvMqtt"></div></div>
+      <div class="card">
+        <p class="section-label">Console</p>
+        <form id="consoleForm" class="console-form" autocomplete="off">
+          <input class="field mono" id="consoleInput" type="text" placeholder="Status 2, SetOption65 1, Backlog Power on; Delay 20; Power off" aria-label="Command" required>
+          <button class="btn primary" type="submit">Send</button>
+        </form>
+        <div class="hint">Any Tasmota console command. Replies appear below, newest first; the device status refreshes after a command that changes state.</div>
+        <pre class="console-out mono" id="consoleOut"></pre>
+      </div>
+      <details class="card fold"><summary><span class="section-label">Raw status</span><span class="fold-sum">the last Status 0 reply as JSON</span></summary><pre class="mono raw-json" id="rawJson"></pre></details>
+    </div>
+  </div>
+</div>
+<script type="application/json" id="page-data">{{json (dict "device" $d "raw" $d.Raw "firmware" .Firmware)}}</script>
+{{end}}

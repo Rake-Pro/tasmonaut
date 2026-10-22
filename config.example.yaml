@@ -1,0 +1,40 @@
+# tasmonaut configuration. Every key has a TASMONAUT_* environment override
+# (named in the comment); the environment wins over this file.
+# Nothing is stored on disk: the device list is this file plus discovery.
+
+listen: ":8080"                            # TASMONAUT_LISTEN
+logLevel: info                             # TASMONAUT_LOG_LEVEL (debug, info, warn, error)
+
+# tasmonaut has NO login of its own. Run it behind an authenticating reverse
+# proxy (the gpm SSO gate / Authentik forward auth). The proxy's username
+# header is read for display and the access log only.
+identityHeader: X-Authentik-Username        # TASMONAUT_IDENTITY_HEADER
+
+# Devices that are always in the inventory. Discovery adds the rest.
+devices: []                                # TASMONAUT_DEVICES=10.0.4.23,10.0.4.24 (hosts only)
+#  - host: 10.0.4.23
+#    name: Kitchen plug                    # optional display name
+#    username: admin                       # optional per-device web credentials
+#    password: ""
+
+discovery:
+  cidrs: []                                # TASMONAUT_DISCOVERY_CIDRS=10.0.4.0/24 (IPv4, /22 or smaller)
+  atStartup: true                          # TASMONAUT_DISCOVERY_AT_STARTUP
+  interval: 15m                            # TASMONAUT_DISCOVERY_INTERVAL; 0 = only on demand
+  timeout: 3s                              # TASMONAUT_DISCOVERY_TIMEOUT per host
+  parallel: 64                             # TASMONAUT_DISCOVERY_PARALLEL
+
+poll:
+  interval: 60s                            # TASMONAUT_POLL_INTERVAL; 0 = only on demand
+  timeout: 5s                              # TASMONAUT_POLL_TIMEOUT per device
+  parallel: 16                             # TASMONAUT_POLL_PARALLEL
+
+# Fleet-wide web credentials (Tasmota WebPassword). Empty password = none.
+tasmota:
+  username: admin                          # TASMONAUT_DEVICE_USERNAME
+  password: ""                             # TASMONAUT_DEVICE_PASSWORD
+
+firmware:
+  checkLatest: true                        # TASMONAUT_FIRMWARE_CHECK_LATEST: ask GitHub for the newest release hourly
+  latest: ""                               # TASMONAUT_FIRMWARE_LATEST: pin the reference version instead ("16.0.0")
+  otaUrl: ""                               # TASMONAUT_FIRMWARE_OTA_URL: written to every device before an upgrade; empty keeps each device's own

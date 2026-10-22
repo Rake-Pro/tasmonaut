@@ -1,0 +1,51 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} - Tasmonaut</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<script src="/static/theme-init.js"></script>
+<link rel="stylesheet" href="/static/drift.css">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="app">
+  <header class="masthead">
+    <button class="menu-btn" id="menuBtn" type="button" aria-label="Open navigation" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <a class="wordmark" href="/">
+      <span class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="5"/><path d="M12 9.5v2.5l1.8 1.2"/></svg></span>
+      <span class="name">Tasmonaut</span>
+    </a>
+    <div class="spacer"></div>
+    <div class="tools">
+      <button class="tool-btn" id="themeBtn" type="button" aria-label="Theme"><span class="tool-label" id="themeLabel">Auto</span></button>
+      <button class="user-btn" id="userBtn" type="button" aria-label="Account menu" title="{{.User.Username}}"><span class="avatar">{{printf "%.1s" .User.Username}}</span></button>
+    </div>
+  </header>
+  <div class="page-body">
+    <aside class="sidebar">
+      <nav class="nav" aria-label="Primary">
+        <div class="nav-group"><p class="nav-group-label">Fleet</p>
+          <a class="nav-item{{if eq .Nav "devices"}} active{{end}}" href="/">Devices</a>
+          <a class="nav-item{{if eq .Nav "jobs"}} active{{end}}" href="/jobs">Jobs</a></div>
+      </nav>
+      <div class="side-foot"><span>Version {{.Version}}</span><a href="https://github.com/Rake-Pro/tasmonaut" rel="noopener">tasmonaut</a></div>
+    </aside>
+    <div class="scrim" id="scrim"></div>
+    <main class="main" id="main">
+      {{template "content" .}}
+    </main>
+  </div>
+  <div class="toast-wrap" id="toasts"></div>
+</div>
+<div class="menu" id="userMenu" hidden>
+  <div class="menu-head"><div class="menu-name">{{if .User.Name}}{{.User.Name}}{{else}}{{.User.Username}}{{end}}</div><div class="menu-sub">{{if .User.Email}}{{.User.Email}}{{else}}signed in at the proxy{{end}}</div></div>
+  <div class="menu-sub" style="padding:8px 14px">Sign-in and sign-out are handled by the SSO gate in front of this page.</div>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>{{end}}
