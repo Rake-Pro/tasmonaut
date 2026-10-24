@@ -1,6 +1,6 @@
 module github.com/rake-pro/tasmonaut
 
-go 1.27.0
+go 1.27.3
 
 require (
 	github.com/rs/zerolog v1.35.1
