@@ -49,9 +49,11 @@ Every key in `config.example.yaml` has a `TASMONAUT_*` environment override; the
 | `poll.interval` | `TASMONAUT_POLL_INTERVAL` | `60s` | Status refresh period |
 | `devices` | `TASMONAUT_DEVICES` | none | Always-present devices; per-device name and web password in the file form |
 | `tasmota.password` | `TASMONAUT_DEVICE_PASSWORD` | none | Fleet-wide Tasmota `WebPassword` |
-| `firmware.checkLatest` | `TASMONAUT_FIRMWARE_CHECK_LATEST` | `true` | Ask GitHub hourly for the newest release (the only non-LAN request) |
+| `firmware.checkLatest` | `TASMONAUT_FIRMWARE_CHECK_LATEST` | `true` | Ask GitHub hourly for the newest release (HTTPS) |
 | `firmware.latest` | `TASMONAUT_FIRMWARE_LATEST` | none | Pin the reference version instead |
 | `firmware.otaUrl` | `TASMONAUT_FIRMWARE_OTA_URL` | none | Written to every device before an upgrade; empty keeps each device's own `OtaUrl` |
+| `firmware.mirror.listen` | `TASMONAUT_FIRMWARE_MIRROR_LISTEN` | none | Second, plain-HTTP listener for the firmware mirror (`:8081`); see "Firmware mirror" |
+| `firmware.mirror.url` | `TASMONAUT_FIRMWARE_MIRROR_URL` | none | How the devices reach that listener (`http://10.0.2.10:8081`) |
 | `identityHeader` | `TASMONAUT_IDENTITY_HEADER` | `X-Authentik-Username` | Proxy header with the signed-in user, shown in the masthead and the access log |
 
 ## HTTP API
@@ -81,9 +83,31 @@ The page script uses it; it is plain JSON and usable with curl through the SSO g
 
 ## Firmware upgrades
 
-- The device's own `OtaUrl` is used unless an override is given; ESP8266 and ESP32 release channels have different URLs, so a fleet-wide override only makes sense for a single-platform fleet.
+- Without the firmware mirror, the device's own `OtaUrl` is used unless an override is given; ESP8266 and ESP32 release channels have different URLs, so a fleet-wide override only makes sense for a single-platform fleet.
 - ESP32 boards flash in two stages through the `safeboot` partition. The job waits, re-issues `Upgrade 1` once if a board sits in safeboot for two minutes, and reports a board that goes silent as "no answer" rather than failed: some boards flash for a long time without answering and finish on their own. Do not power-cycle those early.
 - Upgrade multi-relay boards that control real machinery one at a time and when nothing is running: every relay drops during the reboot.
+
+## Firmware mirror
+
+- Why: stock ESP8266 Tasmota can only download an OTA image over plain HTTP, and ESP32 Tasmota does HTTPS without checking the certificate. With the default `OtaUrl` every upgrade crosses the internet unprotected.
+- What: tasmonaut downloads the image from the Tasmota GitHub release over verified HTTPS (redirects that leave HTTPS are refused) and serves it to the devices. The only plain-HTTP hop left is device to tasmonaut on the local network.
+
+| Item | Behaviour |
+|---|---|
+| Enable | Set `firmware.mirror.listen` and `firmware.mirror.url` together |
+| Listener | Separate port, plain HTTP, no login; answers only `GET /firmware/<image>`, nothing of the console or API |
+| Images | Release OTA images by name (`tasmota.bin.gz`, `tasmota-minimal.bin.gz`, `tasmota32.bin`, `tasmota32-safeboot.bin`, ...), from the reference release (`firmware.checkLatest` or `firmware.latest`) |
+| Upgrade | Each device's `OtaUrl` is rewritten to `<mirror.url>/firmware/<its current image name>` and stays there, so ESP8266 and ESP32 devices and build variants all work through one mirror |
+| Refused | A device whose `OtaUrl` does not name a release image, or that already runs the reference release or newer, fails its job item before anything is sent to it |
+| Limits | 8 downloads at a time; more get `503` |
+| Override | An `OtaUrl` override in the upgrade dialog bypasses the mirror for that job |
+| Storage | The last 8 images, in memory |
+
+How to expose it:
+
+1. Publish the mirror port to the device network only (a dedicated Service, not the Ingress that carries the SSO gate).
+2. Allow the device network to reach that address and port, nothing else.
+3. Set `firmware.mirror.url` to that address, as an IP or a name the devices resolve.
 
 ## Development
 

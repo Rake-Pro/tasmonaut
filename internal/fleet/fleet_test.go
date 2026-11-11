@@ -3,6 +3,8 @@ package fleet
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -312,4 +314,222 @@ func waitJobFor(t *testing.T, f *Fleet, id string, max time.Duration) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatalf("job %s did not finish within %s", id, max)
+}
+
+// newTestMirror points f's mirror at a TLS server standing in for GitHub's
+// release downloads and returns the paths it was asked for.
+func newTestMirror(t *testing.T, f *Fleet, h http.HandlerFunc) *[]string {
+	t.Helper()
+	var mu sync.Mutex
+	var paths []string
+	up := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		mu.Unlock()
+		h(w, r)
+	}))
+	t.Cleanup(up.Close)
+	f.mirror.base = up.URL + "/dl"
+	f.mirror.http = up.Client()
+	return &paths
+}
+
+func TestMirror(t *testing.T) {
+	f := New(testConfig())
+	var plain *httptest.Server
+	paths := newTestMirror(t, f, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/dl/v16.0.0/tasmota.bin.gz":
+			_, _ = w.Write([]byte("image-8266"))
+		case "/dl/v16.0.0/tasmota32.bin":
+			// GitHub answers with a redirect to its asset host.
+			http.Redirect(w, r, "/asset/tasmota32", http.StatusFound)
+		case "/asset/tasmota32":
+			_, _ = w.Write([]byte("image-32"))
+		case "/dl/v16.0.0/tasmota-downgrade.bin":
+			http.Redirect(w, r, plain.URL+"/evil.bin", http.StatusFound)
+		case "/dl/v16.0.0/tasmota-huge.bin":
+			_, _ = w.Write(make([]byte, maxImageBytes+1))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	plainHit := false
+	plain = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		plainHit = true
+		_, _ = w.Write([]byte("tampered"))
+	}))
+	t.Cleanup(plain.Close)
+	ctx := context.Background()
+
+	for i := 0; i < 2; i++ {
+		b, tag, err := f.FirmwareImage(ctx, "tasmota.bin.gz")
+		if err != nil || string(b) != "image-8266" || tag != "v16.0.0" {
+			t.Fatalf("image: %q %q %v", b, tag, err)
+		}
+	}
+	if len(*paths) != 1 {
+		t.Errorf("second request must come from memory: %v", *paths)
+	}
+	if b, _, err := f.FirmwareImage(ctx, "tasmota32.bin"); err != nil || string(b) != "image-32" {
+		t.Errorf("https redirect not followed: %q %v", b, err)
+	}
+	// A redirect out of HTTPS must fail without the plain server being asked.
+	if _, _, err := f.FirmwareImage(ctx, "tasmota-downgrade.bin"); err == nil || !strings.Contains(err.Error(), "not HTTPS") || plainHit {
+		t.Errorf("redirect to http: err=%v plainHit=%v", err, plainHit)
+	}
+	if _, _, err := f.FirmwareImage(ctx, "tasmota-huge.bin"); err == nil {
+		t.Error("oversized image accepted")
+	}
+	// A name the release does not have is remembered: asking again must not
+	// cost another round trip upstream.
+	before := len(*paths)
+	for i := 0; i < 3; i++ {
+		if _, _, err := f.FirmwareImage(ctx, "tasmota-zz.bin.gz"); !errors.Is(err, ErrNoImage) {
+			t.Errorf("image missing upstream: %v", err)
+		}
+	}
+	if n := len(*paths) - before; n != 1 {
+		t.Errorf("missing image asked upstream %d times, want 1", n)
+	}
+	before = len(*paths)
+	for _, name := range []string{"", "..", "../v15.6.0/tasmota.bin", "tasmota.bin/../x", "tasmota.bin?x=1", "config.dmp", "tasmota.factory.bin", "TASMOTA.bin", "tasmota.bin.gz.sig", "tasmota%2f.bin"} {
+		if _, _, err := f.FirmwareImage(ctx, name); !errors.Is(err, ErrNoImage) {
+			t.Errorf("%q: %v", name, err)
+		}
+	}
+	if len(*paths) != before {
+		t.Errorf("an invalid name reached upstream: %v", (*paths)[before:])
+	}
+
+	// The cache stays bounded however many distinct images are asked for.
+	g := New(testConfig())
+	newTestMirror(t, g, func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("x")) })
+	for i := 0; i < maxMirrored+5; i++ {
+		if _, _, err := g.FirmwareImage(ctx, fmt.Sprintf("tasmota-v%d.bin", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(g.mirror.images) != maxMirrored || len(g.mirror.order) != maxMirrored {
+		t.Errorf("cache holds %d images / %d keys, want %d", len(g.mirror.images), len(g.mirror.order), maxMirrored)
+	}
+
+	// Concurrent requests share one download, a slow download does not delay
+	// an image already in memory, and a caller that gives up is released.
+	s := New(testConfig())
+	release := make(chan struct{})
+	slowPaths := newTestMirror(t, s, func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/tasmota-slow.bin") {
+			<-release
+		}
+		_, _ = w.Write([]byte("x"))
+	})
+	if _, _, err := s.FirmwareImage(ctx, "tasmota.bin.gz"); err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	errs := make(chan error, 4)
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, err := s.FirmwareImage(ctx, "tasmota-slow.bin")
+			errs <- err
+		}()
+	}
+	short, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	if _, _, err := s.FirmwareImage(short, "tasmota-slow.bin"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("a waiter past its deadline must be released: %v", err)
+	}
+	cancel()
+	done := make(chan struct{})
+	go func() { _, _, _ = s.FirmwareImage(ctx, "tasmota.bin.gz"); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Error("a cached image waited behind a slow download")
+	}
+	close(release)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("shared download: %v", err)
+		}
+	}
+	if len(*slowPaths) != 2 {
+		t.Errorf("want one download per image, upstream saw %v", *slowPaths)
+	}
+
+	// Without a reference release there is nothing to mirror.
+	cfg := testConfig()
+	cfg.Firmware.Latest = ""
+	if _, _, err := New(cfg).FirmwareImage(ctx, "tasmota.bin.gz"); !errors.Is(err, ErrNoRelease) {
+		t.Errorf("no release: %v", err)
+	}
+}
+
+func TestUpgradeThroughMirror(t *testing.T) {
+	a := newFakeDevice(t, "status0_s31.json")
+	b := newFakeDevice(t, "status0_esp32_4relay.json")
+	b.version = "15.6.0(release-tasmota32)"
+	cfg := testConfig(a.host(), b.host())
+	cfg.Firmware.Mirror = config.Mirror{Listen: ":8081", URL: "http://10.0.2.10:8081/"}
+	f := New(cfg)
+	newTestMirror(t, f, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/dl/v16.0.0/tasmota.bin.gz" {
+			_, _ = w.Write([]byte("image"))
+			return
+		}
+		http.NotFound(w, r)
+	})
+	f.RefreshAll(context.Background())
+	var ids []string
+	for _, d := range f.Devices() {
+		ids = append(ids, d.ID)
+	}
+	job, err := f.BulkUpgrade(ids, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJobFor(t, f, job.ID, upgradePoll+5*time.Second)
+	j, _ := f.Job(job.ID)
+	if ok, failed := j.Counts(); ok != 1 || failed != 1 {
+		t.Fatalf("want the ESP8266 upgraded and the ESP32 refused: %+v %+v", j.Items[0], j.Items[1])
+	}
+	a.mu.Lock()
+	ota := a.ota
+	a.mu.Unlock()
+	if ota != "http://10.0.2.10:8081/firmware/tasmota.bin.gz" {
+		t.Errorf("OtaUrl sent to the device: %q", ota)
+	}
+	// The mirror has no tasmota32.bin: the device must not be told to upgrade
+	// from a URL that cannot answer, and its OtaUrl must be left alone.
+	b.mu.Lock()
+	cmds := strings.Join(b.cmds, "|")
+	b.mu.Unlock()
+	if strings.Contains(cmds, "Upgrade 1") || strings.Contains(cmds, "OtaUrl ") {
+		t.Errorf("ESP32 was commanded although its image is not mirrored: %s", cmds)
+	}
+	if f.Firmware().Mirror != cfg.Firmware.Mirror.URL {
+		t.Errorf("firmware.mirror not reported: %+v", f.Firmware())
+	}
+
+	// The device is now on the release the mirror serves: a second run must
+	// refuse it rather than reflash, and send it nothing.
+	a.mu.Lock()
+	a.cmds = nil
+	a.mu.Unlock()
+	job, err = f.BulkUpgrade(ids[:1], "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitJob(t, f, job.ID)
+	j, _ = f.Job(job.ID)
+	a.mu.Lock()
+	cmds = strings.Join(a.cmds, "|")
+	a.mu.Unlock()
+	if _, failed := j.Counts(); failed != 1 || !strings.Contains(j.Items[0].Message, "already on") || cmds != "" {
+		t.Errorf("up-to-date device: %+v, commands %q", j.Items[0], cmds)
+	}
 }
