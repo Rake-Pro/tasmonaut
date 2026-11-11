@@ -38,3 +38,10 @@ firmware:
   checkLatest: true                        # TASMONAUT_FIRMWARE_CHECK_LATEST: ask GitHub for the newest release hourly
   latest: ""                               # TASMONAUT_FIRMWARE_LATEST: pin the reference version instead ("16.0.0")
   otaUrl: ""                               # TASMONAUT_FIRMWARE_OTA_URL: written to every device before an upgrade; empty keeps each device's own
+  # Firmware mirror: tasmonaut downloads the release image over HTTPS and the
+  # devices fetch it from here over the LAN, instead of each device fetching
+  # from the internet in clear text (ESP8266 Tasmota cannot do HTTPS OTA).
+  # Set both or neither; not together with otaUrl.
+  mirror:
+    listen: ""                             # TASMONAUT_FIRMWARE_MIRROR_LISTEN: second, plain-HTTP listener (":8081"); serves only /firmware/<image>, no login
+    url: ""                                # TASMONAUT_FIRMWARE_MIRROR_URL: how the devices reach it ("http://10.0.2.10:8081")

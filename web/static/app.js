@@ -219,18 +219,20 @@
     return sw;
   }
   function startUpgradeDialog(devs, firmware) {
-    var ota = h('input', { class: 'field mono', type: 'text', placeholder: 'leave empty to use each device\'s own OtaUrl', autocomplete: 'off' });
+    var mirror = firmware && firmware.mirror;
+    var ota = h('input', { class: 'field mono', type: 'text', placeholder: mirror ? 'leave empty to use the firmware mirror' : 'leave empty to use each device\'s own OtaUrl', autocomplete: 'off' });
     var latest = firmware && firmware.version && firmware.version.Major ? (firmware.version.Major + '.' + firmware.version.Minor + '.' + firmware.version.Patch) : null;
+    var from = mirror ? 'from the firmware mirror (' + mirror + ')' : null;
     var intro = devs.length === 1
-      ? 'The device downloads the image from its OtaUrl, restarts and comes back on the new version. It is unavailable for about a minute; a relay that is on stays on through the restart only if PowerOnState says so.'
-      : devs.length + ' devices upgrade four at a time. Each downloads from its own OtaUrl unless you give one below.';
+      ? 'The device downloads the image ' + (from || 'from its OtaUrl') + ', restarts and comes back on the new version. It is unavailable for about a minute; a relay that is on stays on through the restart only if PowerOnState says so.'
+      : devs.length + ' devices upgrade four at a time. Each downloads ' + (from || 'from its own OtaUrl') + ' unless you give an OtaUrl below.';
     return dialog({
       title: devs.length === 1 ? 'Upgrade firmware on ' + devs[0].name + '?' : 'Upgrade firmware on ' + devs.length + ' devices?',
       body: [intro, latest ? 'Latest release: ' + latest + '.' : null,
         'ESP32 boards pass through safeboot and may stay silent for a long time while flashing; the job re-issues the second stage when needed and reports a silent board as such rather than failed.',
         devs.length > 1 ? targetList(devs) : null],
       confirm: 'Upgrade firmware',
-      build: function (body, fields) { body.appendChild(field('OtaUrl override', ota, 'Optional. Written to every selected device before the upgrade.')); fields.otaUrl = ota; }
+      build: function (body, fields) { body.appendChild(field('OtaUrl override', ota, mirror ? 'Optional. Bypasses the mirror: the device downloads from this URL directly.' : 'Optional. Written to every selected device before the upgrade.')); fields.otaUrl = ota; }
     }).then(function (r) {
       if (!r) return null;
       return api('POST', '/api/bulk/upgrade', { ids: devs.map(function (d) { return d.id; }), otaUrl: r.otaUrl.trim() })

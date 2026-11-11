@@ -187,3 +187,37 @@ func TestIdentityAndCrossOrigin(t *testing.T) {
 		t.Errorf("header-less POST: %d", c)
 	}
 }
+
+// The mirror listener is unauthenticated: it must expose firmware images and
+// nothing else, least of all the console or its API.
+func TestMirrorHandlerServesOnlyFirmware(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Firmware.CheckLatest = false
+	cfg.Poll.Interval, cfg.Discovery.Interval = 0, 0
+	h := NewMirror(fleet.New(cfg))
+	for _, tc := range []struct {
+		method, path string
+		want         int
+	}{
+		{"GET", "/", 404},
+		{"GET", "/api/devices", 404},
+		{"POST", "/api/bulk/upgrade", 404},
+		{"GET", "/healthz", 404},
+		{"GET", "/static/app.js", 404},
+		{"GET", "/firmware/", 404},
+		{"GET", "/firmware/a/tasmota.bin", 404},
+		{"POST", "/firmware/tasmota.bin.gz", 405},
+		{"GET", "/firmware/config.dmp", 503}, // no reference release in this config
+	} {
+		if rec := get(h, tc.method, tc.path, ""); rec.Code != tc.want {
+			t.Errorf("%s %s: %d, want %d", tc.method, tc.path, rec.Code, tc.want)
+		}
+	}
+	cfg.Firmware.Latest = "16.0.0"
+	h = NewMirror(fleet.New(cfg))
+	for _, p := range []string{"/firmware/config.dmp", "/firmware/..%2f..%2fetc%2fpasswd", "/firmware/tasmota.bin%2f..%2fx"} {
+		if rec := get(h, "GET", p, ""); rec.Code != 404 {
+			t.Errorf("GET %s: %d, want 404", p, rec.Code)
+		}
+	}
+}

@@ -13,8 +13,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// releasesURL is GitHub's "latest release" endpoint for Tasmota. It is the one
-// outbound request tasmonaut makes beyond the LAN, and it is optional.
+// releasesURL is GitHub's "latest release" endpoint for Tasmota. Together with
+// the firmware mirror's image downloads it is all tasmonaut requests beyond
+// the LAN, both over HTTPS and both optional.
 const releasesURL = "https://api.github.com/repos/arendst/Tasmota/releases/latest"
 
 // Firmware is the reference version devices are compared against.
@@ -26,6 +27,8 @@ type Firmware struct {
 	CheckedAt time.Time       `json:"checkedAt,omitempty"`
 	Source    string          `json:"source"` // "github", "config" or "none"
 	Error     string          `json:"error,omitempty"`
+	// Mirror is the firmware mirror's base URL when upgrades go through it.
+	Mirror string `json:"mirror,omitempty"`
 }
 
 // firmwareRef tracks the reference version, pinned or fetched.

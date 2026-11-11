@@ -66,6 +66,43 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestValidateMirror(t *testing.T) {
+	ok := Mirror{Listen: ":8081", URL: "http://10.0.2.10:8081"}
+	for name, tc := range map[string]struct {
+		mirror Mirror
+		otaURL string
+		want   string
+	}{
+		"off":            {Mirror{}, "", ""},
+		"on":             {ok, "", ""},
+		"trailing slash": {Mirror{Listen: ":8081", URL: "http://fw.example.lan/"}, "", ""},
+		"listen only":    {Mirror{Listen: ":8081"}, "", "set together"},
+		"url only":       {Mirror{URL: ok.URL}, "", "set together"},
+		"main listener":  {Mirror{Listen: ":8080", URL: ok.URL}, "", "must differ"},
+		"https":          {Mirror{Listen: ":8081", URL: "https://10.0.2.10:8081"}, "", "bare http://"},
+		"path":           {Mirror{Listen: ":8081", URL: "http://10.0.2.10:8081/fw"}, "", "bare http://"},
+		"no scheme":      {Mirror{Listen: ":8081", URL: "10.0.2.10:8081"}, "", "bare http://"},
+		"empty query":    {Mirror{Listen: ":8081", URL: "http://10.0.2.10:8081/?"}, "", "bare http://"},
+		"fragment":       {Mirror{Listen: ":8081", URL: "http://10.0.2.10:8081#"}, "", "bare http://"},
+		"escaped path":   {Mirror{Listen: ":8081", URL: "http://10.0.2.10:8081/%2F"}, "", "bare http://"},
+		"userinfo":       {Mirror{Listen: ":8081", URL: "http://u@10.0.2.10:8081"}, "", "bare http://"},
+		"with otaUrl":    {ok, "http://ota.example/tasmota.bin.gz", "set one"},
+	} {
+		cfg := Defaults()
+		cfg.Firmware.Mirror, cfg.Firmware.OtaURL = tc.mirror, tc.otaURL
+		err := cfg.Validate()
+		if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
+			t.Errorf("%s: want %q, got %v", name, tc.want, err)
+		}
+	}
+	t.Setenv("TASMONAUT_FIRMWARE_MIRROR_LISTEN", ":8081")
+	t.Setenv("TASMONAUT_FIRMWARE_MIRROR_URL", ok.URL)
+	cfg, err := Load("")
+	if err != nil || cfg.Firmware.Mirror != ok {
+		t.Errorf("env: %+v %v", cfg.Firmware.Mirror, err)
+	}
+}
+
 func TestBadEnvValues(t *testing.T) {
 	t.Setenv(EnvPrefix+"DISCOVERY_AT_STARTUP", "yes please")
 	t.Setenv(EnvPrefix+"POLL_INTERVAL", "soon")

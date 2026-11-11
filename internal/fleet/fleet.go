@@ -26,6 +26,7 @@ type Fleet struct {
 	client *tasmota.Client // poll timeout
 	probe  *tasmota.Client // discovery timeout
 	fw     *firmwareRef
+	mirror *mirror
 	jobs   *jobStore
 
 	mu      sync.RWMutex
@@ -44,6 +45,7 @@ func New(cfg config.Config) *Fleet {
 		client:  tasmota.New(cfg.Poll.Timeout),
 		probe:   tasmota.New(cfg.Discovery.Timeout),
 		fw:      newFirmwareRef(cfg.Firmware.Latest),
+		mirror:  newMirror(),
 		jobs:    newJobStore(),
 		devices: make(map[string]*Device),
 	}
@@ -147,7 +149,11 @@ func (f *Fleet) Get(id string) (Device, bool) {
 }
 
 // Firmware returns the current reference version.
-func (f *Fleet) Firmware() Firmware { return f.fw.get() }
+func (f *Fleet) Firmware() Firmware {
+	fw := f.fw.get()
+	fw.Mirror = f.cfg.Firmware.Mirror.URL
+	return fw
+}
 
 // Jobs lists bulk jobs, newest first.
 func (f *Fleet) Jobs() []Job { return f.jobs.list() }
@@ -560,8 +566,9 @@ const (
 )
 
 // BulkUpgrade runs an OTA upgrade on the selected devices. otaURL, when not
-// empty, is written as the device's OtaUrl first; otherwise the device's own
-// setting (and the configured firmware.otaUrl) decide.
+// empty, is written as the device's OtaUrl first; otherwise the configured
+// firmware.otaUrl, then the firmware mirror, then the device's own setting
+// decide.
 func (f *Fleet) BulkUpgrade(ids []string, otaURL string) (Job, error) {
 	devs, err := f.deviceRefs(ids)
 	if err != nil {
@@ -572,8 +579,11 @@ func (f *Fleet) BulkUpgrade(ids []string, otaURL string) (Job, error) {
 		otaURL = f.cfg.Firmware.OtaURL
 	}
 	target := "each device's OtaUrl"
-	if otaURL != "" {
+	switch {
+	case otaURL != "":
 		target = otaURL
+	case f.cfg.Firmware.Mirror.URL != "":
+		target = "the firmware mirror at " + f.cfg.Firmware.Mirror.URL
 	}
 	j := f.jobs.create("upgrade", fmt.Sprintf("Firmware upgrade of %d devices from %s", len(devs), target), devs)
 	f.runJob(j, devs, func(ctx context.Context, d *Device, it *JobItem) {
@@ -590,6 +600,22 @@ func (f *Fleet) upgradeOne(ctx context.Context, j *Job, d *Device, it *JobItem, 
 	}
 	short := func(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
 		return context.WithTimeout(ctx, timeout)
+	}
+	mirrored := otaURL == "" && f.cfg.Firmware.Mirror.URL != ""
+	if mirrored {
+		// The mirror serves the reference release whatever the device runs,
+		// so without this check it would reflash or downgrade a device that
+		// is already there. A deliberate downgrade takes an OtaUrl override.
+		if ref := f.fw.get().Version; before.Major != 0 && !before.Safeboot() && before.Compare(ref) >= 0 {
+			f.jobs.set(j, it, "failed", fmt.Sprintf("already on %s; the firmware mirror serves %s. Give an OtaUrl override to flash it anyway", before.Raw, ref.Short()))
+			return
+		}
+		u, err := f.mirrorURL(ctx, d)
+		if err != nil {
+			f.jobs.set(j, it, "failed", err.Error())
+			return
+		}
+		otaURL = u
 	}
 	if otaURL != "" {
 		c, cancel := short(ctx, f.cfg.Poll.Timeout)
@@ -649,7 +675,11 @@ func (f *Fleet) upgradeOne(ctx context.Context, j *Job, d *Device, it *JobItem, 
 		case v.Compare(before) == 0 && v.Variant == before.Variant && time.Since(j.StartedAt) > 2*time.Minute && safebootSince.IsZero():
 			// Answering with the old version two minutes in: the download
 			// failed (bad OtaUrl, no route, image too large for the flash).
-			f.jobs.set(j, it, "failed", "still on "+v.Raw+"; check OtaUrl and the device console")
+			hint := "check OtaUrl and the device console"
+			if mirrored {
+				hint = "check that the device can reach " + otaURL + " and its console"
+			}
+			f.jobs.set(j, it, "failed", "still on "+v.Raw+"; "+hint)
 			return
 		}
 	}

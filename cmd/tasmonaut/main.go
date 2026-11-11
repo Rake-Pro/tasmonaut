@@ -70,19 +70,34 @@ func run(cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{
+	servers := []*http.Server{{
 		Addr:              cfg.Listen,
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		// Long enough for a bulk config download or a sweep-sized refresh.
 		WriteTimeout: 5 * time.Minute,
 		IdleTimeout:  2 * time.Minute,
+	}}
+	if m := cfg.Firmware.Mirror; m.Listen != "" {
+		log.Info().Str("listen", m.Listen).Str("url", m.URL).
+			Msg("firmware mirror on: plain HTTP, no login, serves only /firmware/<image>; expose it to the device network only")
+		servers = append(servers, &http.Server{
+			Addr:              m.Listen,
+			Handler:           server.NewMirror(fl),
+			ReadHeaderTimeout: 10 * time.Second,
+			// A 2 MB ESP32 image over a weak Wi-Fi link takes a while.
+			WriteTimeout:   5 * time.Minute,
+			IdleTimeout:    time.Minute,
+			MaxHeaderBytes: 16 << 10,
+		})
 	}
-	errc := make(chan error, 1)
-	go func() {
-		log.Info().Str("addr", cfg.Listen).Msg("listening")
-		errc <- srv.ListenAndServe()
-	}()
+	errc := make(chan error, len(servers))
+	for _, srv := range servers {
+		go func() {
+			log.Info().Str("addr", srv.Addr).Msg("listening")
+			errc <- srv.ListenAndServe()
+		}()
+	}
 	select {
 	case err := <-errc:
 		if !errors.Is(err, http.ErrServerClosed) {
@@ -92,9 +107,11 @@ func run(cfg config.Config) error {
 		log.Info().Msg("shutting down")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			return err
+		var errs []error
+		for _, srv := range servers {
+			errs = append(errs, srv.Shutdown(shutdownCtx))
 		}
+		return errors.Join(errs...)
 	}
 	return nil
 }

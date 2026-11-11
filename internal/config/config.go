@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -91,6 +92,21 @@ type Firmware struct {
 	// Empty keeps each device's own OtaUrl, which is what the stock release
 	// channel needs (ESP8266 and ESP32 devices use different URLs).
 	OtaURL string `yaml:"otaUrl"`
+	Mirror Mirror `yaml:"mirror"`
+}
+
+// Mirror makes tasmonaut the OTA server of the fleet. ESP8266 builds of
+// Tasmota cannot download firmware over HTTPS, so instead of every device
+// fetching from the internet in clear text, tasmonaut downloads the release
+// image over HTTPS and the devices fetch it from here across the LAN.
+type Mirror struct {
+	// Listen is a second, plain-HTTP listener that serves nothing but
+	// /firmware/<image>. It is separate from Listen because the devices cannot
+	// pass the authenticating proxy; expose it to the device network only.
+	Listen string `yaml:"listen"`
+	// URL is how the devices reach that listener ("http://10.0.2.10:8081").
+	// Every upgrade points the device's OtaUrl at it.
+	URL string `yaml:"url"`
 }
 
 // Defaults is the configuration before any file or environment is applied.
@@ -207,6 +223,8 @@ func applyEnv(cfg *Config) error {
 	boolean("FIRMWARE_CHECK_LATEST", &cfg.Firmware.CheckLatest)
 	str("FIRMWARE_LATEST", &cfg.Firmware.Latest)
 	str("FIRMWARE_OTA_URL", &cfg.Firmware.OtaURL)
+	str("FIRMWARE_MIRROR_LISTEN", &cfg.Firmware.Mirror.Listen)
+	str("FIRMWARE_MIRROR_URL", &cfg.Firmware.Mirror.URL)
 	return err
 }
 
@@ -258,6 +276,19 @@ func (c Config) Validate() error {
 	if c.Firmware.Latest != "" {
 		if _, err := ParseVersion(c.Firmware.Latest); err != nil {
 			errs = append(errs, fmt.Errorf("firmware.latest: %w", err))
+		}
+	}
+	if m := c.Firmware.Mirror; m.Listen != "" || m.URL != "" {
+		u, err := url.Parse(m.URL)
+		switch {
+		case m.Listen == "" || m.URL == "":
+			errs = append(errs, errors.New("firmware.mirror: listen and url must be set together"))
+		case m.Listen == c.Listen:
+			errs = append(errs, errors.New("firmware.mirror.listen: must differ from listen; the main listener is the one behind the authenticating proxy"))
+		case err != nil || u.Host == "" || strings.TrimSuffix(m.URL, "/") != "http://"+u.Host:
+			errs = append(errs, fmt.Errorf("firmware.mirror.url: %q must be a bare http://host:port (ESP8266 devices cannot download over HTTPS)", m.URL))
+		case c.Firmware.OtaURL != "":
+			errs = append(errs, errors.New("firmware.otaUrl and firmware.mirror: set one; a fleet-wide OtaUrl would bypass the mirror"))
 		}
 	}
 	return errors.Join(errs...)
