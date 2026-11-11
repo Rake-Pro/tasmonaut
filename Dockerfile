@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ---- build ----
-FROM golang:1.27.3 AS build
+FROM golang:1.27.4 AS build
 WORKDIR /src
 
 # Dependencies are vendored, so the build needs no network.
